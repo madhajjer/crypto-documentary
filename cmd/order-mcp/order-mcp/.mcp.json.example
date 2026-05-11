@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "indodax-order": {
+      "command": "uv",
+      "args": ["run", "--with", "mcp", "python", "/Users/hajir/Public/strategies/indodax-bot/cmd/order-mcp/server.py"]
+    }
+  }
+}
