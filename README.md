@@ -550,6 +550,86 @@ gates: vol≥1000k USDT, spread≥P75 (0.1225%), r/s≥P50 (122.26)
 
 ---
 
+## 11. fetch-binance — Binance Historical Klines
+
+**What it does:** Paginates Binance klines forward from a start date and appends them to a per-symbol JSONL file. Used to fetch the Binance reference price series needed by `lag-study`.
+
+**Usage:**
+
+```bash
+# Fetch 5m BTC/USDT klines from 2024
+go run ./cmd/fetch-binance -pair btc_idr -start 2024-01-01 -tf 5m
+
+# Fetch 1h ENA/USDT klines
+go run ./cmd/fetch-binance -pair ena_idr -start 2024-01-01 -tf 1h
+
+# Custom output dir
+go run ./cmd/fetch-binance -pair sol_idr -start 2023-01-01 -tf 5m -dir ./data
+```
+
+**Flags:**
+- `-pair` — Indodax-format pair (e.g. `ena_idr`); mapped automatically to Binance symbol (`ENAUSDT`)
+- `-start` — fetch from this date (YYYY-MM-DD) — **REQUIRED**
+- `-tf` — timeframe: `1m`, `5m`, `15m`, `1h`, `4h`, `1d` (default: `5m`)
+- `-dir` — output directory (default: `data`)
+
+**Output:**
+```
+data/binance_<SYMBOL>_<TF>.jsonl    # e.g. binance_ENAUSDT_5m.jsonl
+```
+
+Each line is a parsed bar:
+```json
+{"time": 1704067200, "open": 0.812, "high": 0.820, "low": 0.808, "close": 0.815, "volume": "123456.00"}
+```
+
+---
+
+## 12. lag-study — Indodax-vs-Binance Lag Analysis
+
+**What it does:** Reads pre-fetched 5m klines for Indodax IDR pairs + USDT/IDR bridge + Binance USD reference, measures the diurnal Indodax-vs-Binance fair-value gap and its catch-up speed, then computes out-of-sample cost-charged expectancy and outputs an **EDGE / MARGINAL / NO_EDGE** verdict.
+
+**Prerequisites:** Run `fetch-klines` (Indodax 5m) and `fetch-binance` (Binance 5m) for the pairs you want to study.
+
+**Usage:**
+
+```bash
+# Run against default data dir (studies BTC, ENA, SOL, DOGE)
+go run ./cmd/lag-study
+
+# Custom data directory
+go run ./cmd/lag-study -dir ./data
+```
+
+**Flags:**
+- `-dir` — directory containing kline JSONL files (default: `data`)
+
+**Input files expected:**
+```
+data/klines_<PAIR>_5.jsonl          # Indodax 5m (e.g. klines_ena_idr_5.jsonl)
+data/klines_usdt_idr_5.jsonl        # USDT/IDR bridge rate
+data/binance_<SYMBOL>_5m.jsonl      # Binance 5m reference
+```
+
+**Output:**
+```
+data/lag_study_<timestamp>.json     # full metrics
+data/lag_study_<timestamp>.md       # human-readable verdict report
+```
+
+**Example report excerpt:**
+```markdown
+## Verdict: EDGE
+
+Pair: ENA/IDR
+- Median gap vs Binance fair: -1.2% (Indodax lags)
+- Catch-up half-life: ~15 min
+- OOS expectancy (net fees): +0.38% per signal
+- Coins studied: BTC, ENA, SOL, DOGE
+```
+
+---
+
 ## Emergency Stops
 
 **To cancel all open orders without restarting the bot:**
