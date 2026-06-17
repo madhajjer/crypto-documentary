@@ -355,6 +355,92 @@ Each line is a parsed bar:
 
 ---
 
+## 8. recorder — Live Orderbook & Trade Capture
+
+**What it does:** Subscribes to Indodax public WebSocket feeds (orderbook + trade activity) for one or more pairs and persists raw snapshots to JSONL. Optionally polls Binance depth as a fair-value reference leg. Stops cleanly on Ctrl+C (flushes buffers, closes files).
+
+**Usage:**
+
+```bash
+# Record btc_idr orderbook + trades (1 snapshot/sec)
+go run ./cmd/recorder -pair btc_idr
+
+# Record multiple pairs
+go run ./cmd/recorder -pair ena_idr -extra usdt_idr,sol_idr
+
+# Record with Binance fair-value leg (for spread study)
+go run ./cmd/recorder -pair ena_idr -extra usdt_idr -binance ena_idr
+
+# Custom snapshot rate and book depth
+go run ./cmd/recorder -pair btc_idr -bookhz 0.5 -booklevels 10 -dir ./data
+```
+
+**Flags:**
+- `-pair` — primary pair to record (default: `btc_idr`)
+- `-extra` — comma-separated additional pairs to record
+- `-bookhz` — orderbook snapshot rate cap per pair in Hz (default: 1; 0 = unlimited)
+- `-booklevels` — number of bid/ask levels to persist (default: 20)
+- `-binance` — Indodax-format pair to capture from Binance as fair-value reference (e.g. `ena_idr`); empty = off
+- `-binancehz` — Binance depth poll rate in Hz (default: 1.0)
+- `-dir` — data directory root (default: `./data`)
+- `-ws` — Indodax WebSocket URL
+
+**Output:**
+```
+data/ticks/
+├── ena_idr_<date>.jsonl        # Indodax orderbook + trade snapshots
+├── usdt_idr_<date>.jsonl
+└── binance_ena_usdt_<date>.jsonl  # Binance depth (if -binance set)
+```
+
+---
+
+## 9. fill-study — Arb Fill Quality Analysis
+
+**What it does:** Reads recorded Indodax + Binance orderbook snapshots, detects deep-night WIB price gaps vs Binance fair value, walks the real ask book to test whether a 100k-IDR clip is fillable below fair, checks if it reverts within 30 minutes, and writes a markdown report with a GO/NO_GO verdict.
+
+**Prerequisites:** Run `recorder` with `-binance ena_idr` first to capture Indodax ENA/IDR, USDT/IDR, and Binance ENA/USDT snapshots.
+
+**Usage:**
+
+```bash
+# Run against default data dir
+go run ./cmd/fill-study
+
+# Custom input/output directories
+go run ./cmd/fill-study -dir ./data/ticks -out ./data/fill_study
+```
+
+**Flags:**
+- `-dir` — directory of recorded `*.jsonl` tick files (default: `../data/ticks`)
+- `-out` — report output directory (default: `../data/fill_study`)
+
+**Study parameters (hardcoded):**
+- Gap threshold: −1% vs Binance fair
+- Target clip: 100k IDR
+- Fee: 43 bps round-trip
+- Hold window: 30 minutes
+- Revert fraction: 0.5
+- Night window: 22:00–04:00 WIB
+
+**Output:**
+```
+data/fill_study/<timestamp>.md   # markdown report
+```
+
+**Example report excerpt:**
+```markdown
+## Verdict: GO (threshold N>=5)
+
+Aligned frames: 1440 · Detected night events: 12 · Fillable: 7
+
+| time (UTC) | gap bps | spread bps | vwap | fair | net conv bps | filled | reverted | fillable |
+|---|---:|---:|---:|---:|---:|:--:|:--:|:--:|
+| 06-10 22:14 | -120 | 35 | 14850.50 | 14960.00 | 42 | true | true | true |
+```
+
+---
+
 ## Typical Workflows
 
 ### Scenario 1: New Pair Evaluation (One-Time)
