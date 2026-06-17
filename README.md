@@ -495,6 +495,61 @@ npm run dev
 
 ---
 
+## 10. binance-screener — Binance USDT Pair Filter
+
+**What it does:** Fetches all Binance USDT pairs from `/ticker/24hr` (one call, ~200KB) and ranks them using **percentile-based** spread and range-to-spread gates. Thresholds adapt to current market conditions — no hardcoded spread floor. Falls back through `api1–api4.binance.com` if the primary host is blocked.
+
+**Filter order:**
+1. Keep `*USDT` symbols (excluding stablecoins)
+2. Drop pairs below `-min-vol` (fixed 24h USDT threshold)
+3. Compute spread% and r/s percentiles over the **volume-filtered** universe
+4. Keep pairs at/above `-spread-pct` AND `-r2s-pct` percentile
+5. Z-score rank survivors (0.5×spread + 0.3×vol + 0.2×r/s)
+
+**Usage:**
+
+```bash
+# Default: vol≥1M USDT, spread≥P75, r/s≥P50, top 20
+go run ./cmd/binance-screener
+
+# Stricter spread gate, wider r/s, custom volume floor
+go run ./cmd/binance-screener -min-vol 5e6 -spread-pct 80 -r2s-pct 60 -top 20
+
+# Full JSON output
+go run ./cmd/binance-screener -json
+```
+
+**Flags:**
+- `-min-vol` — minimum 24h USDT volume (default: 1e6)
+- `-spread-pct` — keep pairs at/above this spread percentile, computed over vol-filtered universe (default: 75)
+- `-r2s-pct` — keep pairs at/above this range-to-spread percentile (default: 50)
+- `-top N` — rows to display (default: 20)
+- `-json` — print full JSON to stdout
+- `-data-dir` — output directory (default: `data/binance_screener`)
+
+**Output:**
+```
+data/binance_screener/<timestamp>.json
+data/binance_screener/<timestamp>.md
+```
+
+**Example output:**
+```
+Binance screener — 9 survivors / 661 USDT pairs
+source: api.binance.com
+gates: vol≥1000k USDT, spread≥P75 (0.1225%), r/s≥P50 (122.26)
+
+| symbol    | spread% | range%  | vol (M USDT) | r/s   | 24h%   | score |
+|-----------|---------|---------|--------------|-------|--------|-------|
+| DUSDT     | 0.379%  | 84.47%  | 3.8          | 223.0 | +3.9%  | 0.79  |
+| SYNUSDT   | 0.243%  | 60.80%  | 8.3          | 250.2 | +60.3% | 0.41  |
+| ASTERUSDT | 0.140%  | 20.62%  | 101.7        | 147.1 | +7.7%  | 0.41  |
+```
+
+**Note:** Binance spreads are ~10–50× tighter than Indodax. A P75 spread on Binance (~0.12%) signals a relatively illiquid pair on that exchange — useful for cross-exchange arb study rather than Binance MM.
+
+---
+
 ## Emergency Stops
 
 **To cancel all open orders without restarting the bot:**
